@@ -1,0 +1,287 @@
+{
+  "name": "Veille IA automatisee",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "11111111-1111-4111-8111-111111111111",
+      "name": "Declencheur manuel",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -640,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "id": "22222222-2222-4222-8222-222222222222",
+      "name": "Declencheur planifie",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -640,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://huggingface.co/blog/feed.xml",
+        "options": {}
+      },
+      "id": "33333333-3333-4333-8333-333333333333",
+      "name": "RSS Hugging Face",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.1,
+      "position": [
+        -380,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://export.arxiv.org/rss/cs.AI",
+        "options": {}
+      },
+      "id": "44444444-4444-4444-8444-444444444444",
+      "name": "RSS arXiv cs.AI",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.1,
+      "position": [
+        -380,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "55555555-5555-4555-8555-555555555555",
+      "name": "Fusion des flux",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        -120,
+        390
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalise les items des deux flux RSS et garde les N plus recents.\n// On construit un id stable a partir du lien ou du titre.\nconst MAX_ITEMS = 6;\n\nfunction makeId(item) {\n  const base = item.guid || item.link || item.title || JSON.stringify(item);\n  let h = 0;\n  for (let i = 0; i < base.length; i++) {\n    h = (h * 31 + base.charCodeAt(i)) >>> 0;\n  }\n  return String(h);\n}\n\nfunction cleanText(s) {\n  if (!s) return '';\n  return String(s)\n    .replace(/<[^>]*>/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\nconst out = [];\nfor (const entry of $input.all()) {\n  const j = entry.json || {};\n  const title = cleanText(j.title);\n  if (!title) continue;\n  const link = j.link || j.guid || '';\n  const contentRaw = j.contentSnippet || j.content || j.summary || j.description || '';\n  const content = cleanText(contentRaw).slice(0, 800);\n  out.push({\n    json: {\n      id: makeId(j),\n      title,\n      link,\n      content,\n      pubDate: j.isoDate || j.pubDate || ''\n    }\n  });\n}\n\n// Tri par date decroissante quand la date existe.\nout.sort((a, b) => {\n  const da = Date.parse(a.json.pubDate) || 0;\n  const db = Date.parse(b.json.pubDate) || 0;\n  return db - da;\n});\n\nreturn out.slice(0, MAX_ITEMS);"
+      },
+      "id": "66666666-6666-4666-8666-666666666666",
+      "name": "Normaliser les items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        120,
+        390
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Deduplication contre un fichier d'etat /data/seen.json.\n// On lit les ids deja vus, on filtre, puis on enregistre les nouveaux ids.\nconst fs = require('fs');\nconst path = '/data/seen.json';\n\nlet seen = [];\ntry {\n  if (fs.existsSync(path)) {\n    seen = JSON.parse(fs.readFileSync(path, 'utf8'));\n    if (!Array.isArray(seen)) seen = [];\n  }\n} catch (e) {\n  seen = [];\n}\nconst seenSet = new Set(seen);\n\nconst fresh = [];\nconst newIds = [];\nfor (const entry of $input.all()) {\n  const id = entry.json.id;\n  if (!seenSet.has(id)) {\n    fresh.push(entry);\n    newIds.push(id);\n    seenSet.add(id);\n  }\n}\n\ntry {\n  // On borne la taille du fichier d'etat.\n  const merged = Array.from(seenSet).slice(-500);\n  fs.writeFileSync(path, JSON.stringify(merged, null, 2));\n} catch (e) {\n  // Si l'ecriture echoue on continue quand meme avec les items frais.\n}\n\nreturn fresh;"
+      },
+      "id": "77777777-7777-4777-8777-777777777777",
+      "name": "Deduplication",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        360,
+        390
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://router.huggingface.co/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  model: \"Qwen/Qwen2.5-Coder-32B-Instruct\",\n  temperature: 0.2,\n  max_tokens: 300,\n  messages: [\n    { role: \"system\", content: \"Tu es un assistant de veille technologique. Tu reponds uniquement avec un objet JSON valide, sans aucun texte autour.\" },\n    { role: \"user\", content: \"Article a analyser.\\nTitre: \" + $json.title + \"\\nExtrait: \" + $json.content + \"\\n\\nProduis un JSON avec exactement ces cles: resume (chaine, 2 phrases maximum en francais), tag (une seule valeur parmi: LLM, Vision, Robotique, Hardware, Donnees, Autre), pertinence (entier de 1 a 5, 5 = tres pertinent pour une veille IA). Reponds avec le JSON seul.\" }\n  ]\n}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "88888888-8888-4888-8888-888888888888",
+      "name": "Appel LLM Hugging Face",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        600,
+        390
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "hf-router",
+          "name": "HF router token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse la reponse du LLM, extrait le JSON, et garde les champs de l'article.\nfunction extractJson(text) {\n  if (!text) return null;\n  const start = text.indexOf('{');\n  const end = text.lastIndexOf('}');\n  if (start === -1 || end === -1 || end <= start) return null;\n  try {\n    return JSON.parse(text.slice(start, end + 1));\n  } catch (e) {\n    return null;\n  }\n}\n\nconst items = $input.all();\nconst source = $('Deduplication').all();\nconst out = [];\n\nfor (let i = 0; i < items.length; i++) {\n  const resp = items[i].json;\n  const article = (source[i] && source[i].json) || {};\n  let content = '';\n  try {\n    content = resp.choices[0].message.content;\n  } catch (e) {\n    content = '';\n  }\n  const parsed = extractJson(content) || {};\n  const tag = parsed.tag || 'Autre';\n  let pertinence = parseInt(parsed.pertinence, 10);\n  if (isNaN(pertinence)) pertinence = 0;\n  const resume = parsed.resume || '(resume indisponible)';\n\n  out.push({\n    json: {\n      date: new Date().toISOString().slice(0, 10),\n      title: article.title || '',\n      link: article.link || '',\n      tag,\n      pertinence,\n      resume\n    }\n  });\n}\n\nreturn out;"
+      },
+      "id": "99999999-9999-4999-8999-999999999999",
+      "name": "Construire les resultats",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        840,
+        390
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Ecrit les resultats dans /data/veille.md et /data/veille.csv en mode ajout.\nconst fs = require('fs');\n\nconst mdPath = '/data/veille.md';\nconst csvPath = '/data/veille.csv';\n\nfunction csvEscape(s) {\n  const v = String(s == null ? '' : s);\n  if (v.includes('\"') || v.includes(',') || v.includes('\\n')) {\n    return '\"' + v.replace(/\"/g, '\"\"') + '\"';\n  }\n  return v;\n}\n\nconst rows = $input.all();\n\n// En-tete Markdown si le fichier n'existe pas encore.\nif (!fs.existsSync(mdPath)) {\n  fs.writeFileSync(mdPath, '# Veille IA automatisee\\n\\nResultats produits par le workflow n8n.\\n\\n');\n}\n// En-tete CSV si le fichier n'existe pas encore.\nif (!fs.existsSync(csvPath)) {\n  fs.writeFileSync(csvPath, 'date,tag,pertinence,titre,lien,resume\\n');\n}\n\nlet mdBlock = '';\nlet csvBlock = '';\nfor (const r of rows) {\n  const j = r.json;\n  mdBlock += '## ' + j.title + '\\n\\n';\n  mdBlock += '- Date: ' + j.date + '\\n';\n  mdBlock += '- Tag: ' + j.tag + '\\n';\n  mdBlock += '- Pertinence: ' + j.pertinence + '/5\\n';\n  if (j.link) mdBlock += '- Lien: ' + j.link + '\\n';\n  mdBlock += '\\n' + j.resume + '\\n\\n';\n\n  csvBlock += [\n    csvEscape(j.date),\n    csvEscape(j.tag),\n    csvEscape(j.pertinence),\n    csvEscape(j.title),\n    csvEscape(j.link),\n    csvEscape(j.resume)\n  ].join(',') + '\\n';\n}\n\nif (mdBlock) fs.appendFileSync(mdPath, mdBlock);\nif (csvBlock) fs.appendFileSync(csvPath, csvBlock);\n\nreturn [{ json: { ecrits: rows.length, md: mdPath, csv: csvPath } }];"
+      },
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "name": "Ecrire fichiers",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1080,
+        390
+      ]
+    }
+  ],
+  "connections": {
+    "Declencheur manuel": {
+      "main": [
+        [
+          {
+            "node": "RSS Hugging Face",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RSS arXiv cs.AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Declencheur planifie": {
+      "main": [
+        [
+          {
+            "node": "RSS Hugging Face",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RSS arXiv cs.AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RSS Hugging Face": {
+      "main": [
+        [
+          {
+            "node": "Fusion des flux",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RSS arXiv cs.AI": {
+      "main": [
+        [
+          {
+            "node": "Fusion des flux",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Fusion des flux": {
+      "main": [
+        [
+          {
+            "node": "Normaliser les items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normaliser les items": {
+      "main": [
+        [
+          {
+            "node": "Deduplication",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deduplication": {
+      "main": [
+        [
+          {
+            "node": "Appel LLM Hugging Face",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Appel LLM Hugging Face": {
+      "main": [
+        [
+          {
+            "node": "Construire les resultats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Construire les resultats": {
+      "main": [
+        [
+          {
+            "node": "Ecrire fichiers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}

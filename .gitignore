@@ -1,0 +1,14 @@
+# Secrets: ne jamais committer.
+.env
+
+# Donnees n8n locales (workflows importes, credentials chiffrees).
+n8n-data/
+
+# Sorties generees a l'execution. Des exemples reels sont dans examples/.
+data/seen.json
+data/veille.md
+data/veille.csv
+
+# Divers
+*.log
+.DS_Store
