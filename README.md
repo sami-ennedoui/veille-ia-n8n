@@ -136,7 +136,7 @@ contre les vrais flux RSS le 2026-06-21, avec les vrais resumes generes par le m
 Le run a produit 16 articles resumes (8 du blog Hugging Face, 8 de MIT Technology Review).
 Une seconde execution n'a rien ajoute, ce qui confirme la deduplication.
 
-## Ce que Sami doit configurer
+## Configuration
 
 - Mettre un vrai token Hugging Face dans `.env` et dans la credential n8n.
 - Le token n'est jamais committe. `.env` est dans `.gitignore`.
