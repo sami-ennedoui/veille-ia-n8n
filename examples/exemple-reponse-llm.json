@@ -1,0 +1,36 @@
+{
+    "id": "chatcmpl-bba7e342-1815-4070-a5e8-99f4619aefb1",
+    "object": "chat.completion",
+    "created": 1782058778,
+    "model": "qwen3-coder-30b-a3b-instruct",
+    "choices": [
+        {
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "content": "{\n  \"resume\": \"Cet article compare la m\u00e9thode LoRA avec d'autres techniques r\u00e9centes de fine-tuning efficace pour les mod\u00e8les linguistiques. Il \u00e9value si ces nouvelles approches peuvent surpasser la popularit\u00e9 et l'efficacit\u00e9 de LoRA.\",\n  \"tag\": \"LLM\",\n  \"pertinence\": 4\n}",
+                "refusal": null,
+                "annotations": null,
+                "audio": null,
+                "function_call": null,
+                "tool_calls": [],
+                "reasoning": null
+            },
+            "logprobs": null,
+            "finish_reason": "stop",
+            "stop_reason": null,
+            "token_ids": null
+        }
+    ],
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+        "prompt_tokens": 152,
+        "total_tokens": 231,
+        "completion_tokens": 79,
+        "prompt_tokens_details": null
+    },
+    "prompt_logprobs": null,
+    "prompt_token_ids": null,
+    "kv_transfer_params": null
+}
